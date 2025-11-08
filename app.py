@@ -111,3 +111,4 @@ if __name__ == "__main__":
 
     print("🤖 Bot avviato...")
     app.run_polling()
+
