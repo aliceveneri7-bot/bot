@@ -1,3 +1,4 @@
+# force new deploy
 import sqlite3
 import logging
 from datetime import datetime, timedelta
@@ -6,6 +7,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from apscheduler.schedulers.background import BackgroundScheduler
 import os
 import asyncio
+
 
 # === CONFIG ===
 TOKEN = os.getenv("BOT_TOKEN")
@@ -121,3 +123,4 @@ if __name__ == "__main__":
 
     print("🤖 Bot avviato correttamente su Render.")
     app.run_polling()
+
