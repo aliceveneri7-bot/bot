@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS utenti (
+    user_id INTEGER PRIMARY KEY,
+    username TEXT,
+    data_iscrizione TEXT,
+    data_scadenza TEXT
+);
