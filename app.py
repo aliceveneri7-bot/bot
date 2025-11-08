@@ -1,4 +1,4 @@
-# force new deploy
+# app.py
 import sqlite3
 import logging
 from datetime import datetime, timedelta
@@ -7,7 +7,6 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from apscheduler.schedulers.background import BackgroundScheduler
 import os
 import asyncio
-
 
 # === CONFIG ===
 TOKEN = os.getenv("BOT_TOKEN")
@@ -34,15 +33,21 @@ def init_db():
     conn.commit()
     conn.close()
 
-def add_member(username):
+def add_member(username, join_date=None):
     conn = sqlite3.connect("members.db")
     c = conn.cursor()
-    now = datetime.now()
-    expiry = now + timedelta(days=30)
+    if join_date:
+        try:
+            join_dt = datetime.strptime(join_date, "%Y-%m-%d")
+        except ValueError:
+            join_dt = datetime.now()
+    else:
+        join_dt = datetime.now()
+    expiry = join_dt + timedelta(days=30)
     c.execute("""
         INSERT OR REPLACE INTO members (username, join_date, expiry_date)
         VALUES (?, ?, ?)
-    """, (username, now.strftime("%Y-%m-%d"), expiry.strftime("%Y-%m-%d")))
+    """, (username, join_dt.strftime("%Y-%m-%d"), expiry.strftime("%Y-%m-%d")))
     conn.commit()
     conn.close()
 
@@ -65,14 +70,18 @@ def get_expired_members():
 
 # === COMANDI ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Benvenuto! Usa /registra <username> per aggiungere un utente o /rinnova <username> per rinnovare.")
+    await update.message.reply_text(
+        "👋 Benvenuto! Usa /registra <username> [YYYY-MM-DD] per aggiungere un utente "
+        "o /rinnova <username> per rinnovare."
+    )
 
 async def registra(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) != 1:
-        await update.message.reply_text("Usa: /registra <username>")
+    if len(context.args) < 1:
+        await update.message.reply_text("Usa: /registra <username> [YYYY-MM-DD]")
         return
     username = context.args[0].replace("@", "")
-    add_member(username)
+    join_date = context.args[1] if len(context.args) > 1 else None
+    add_member(username, join_date)
     await update.message.reply_text(f"✅ Utente @{username} registrato con scadenza tra 30 giorni.")
 
 async def rinnova(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -86,7 +95,7 @@ async def rinnova(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect("members.db")
     c = conn.cursor()
-    c.execute("SELECT username, expiry_date FROM members")
+    c.execute("SELECT username, join_date, expiry_date FROM members")
     rows = c.fetchall()
     conn.close()
 
@@ -94,7 +103,7 @@ async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📭 Nessun utente registrato.")
         return
 
-    text = "\n".join([f"@{u} → scade il {d}" for u, d in rows])
+    text = "\n".join([f"@{u} → join: {j}, scade: {d}" for u, j, d in rows])
     await update.message.reply_text("📋 Lista utenti:\n" + text)
 
 # === SCHEDULER ===
@@ -123,4 +132,3 @@ if __name__ == "__main__":
 
     print("🤖 Bot avviato correttamente su Render.")
     app.run_polling()
-
