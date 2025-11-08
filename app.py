@@ -1,4 +1,4 @@
-# app.py
+# app.py - Bot Telegram per gestione abbonamenti
 import sqlite3
 import logging
 from datetime import datetime, timedelta
@@ -36,18 +36,12 @@ def init_db():
 def add_member(username, join_date=None):
     conn = sqlite3.connect("members.db")
     c = conn.cursor()
-    if join_date:
-        try:
-            join_dt = datetime.strptime(join_date, "%Y-%m-%d")
-        except ValueError:
-            join_dt = datetime.now()
-    else:
-        join_dt = datetime.now()
-    expiry = join_dt + timedelta(days=30)
+    now = datetime.now() if not join_date else datetime.strptime(join_date, "%Y-%m-%d")
+    expiry = now + timedelta(days=30)
     c.execute("""
         INSERT OR REPLACE INTO members (username, join_date, expiry_date)
         VALUES (?, ?, ?)
-    """, (username, join_dt.strftime("%Y-%m-%d"), expiry.strftime("%Y-%m-%d")))
+    """, (username, now.strftime("%Y-%m-%d"), expiry.strftime("%Y-%m-%d")))
     conn.commit()
     conn.close()
 
@@ -56,6 +50,13 @@ def renew_member(username):
     c = conn.cursor()
     expiry = datetime.now() + timedelta(days=30)
     c.execute("UPDATE members SET expiry_date = ? WHERE username = ?", (expiry.strftime("%Y-%m-%d"), username))
+    conn.commit()
+    conn.close()
+
+def remove_member(username):
+    conn = sqlite3.connect("members.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM members WHERE username = ?", (username,))
     conn.commit()
     conn.close()
 
@@ -71,8 +72,11 @@ def get_expired_members():
 # === COMANDI ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Benvenuto! Usa /registra <username> [YYYY-MM-DD] per aggiungere un utente "
-        "o /rinnova <username> per rinnovare."
+        "👋 Benvenuto!\n"
+        "Usa /registra <username> [YYYY-MM-DD] per aggiungere un utente\n"
+        "Usa /rinnova <username> per rinnovare\n"
+        "Usa /rimuovi <username> per rimuovere\n"
+        "Usa /lista per vedere tutti gli utenti."
     )
 
 async def registra(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -92,10 +96,18 @@ async def rinnova(update: Update, context: ContextTypes.DEFAULT_TYPE):
     renew_member(username)
     await update.message.reply_text(f"🔁 Abbonamento di @{username} rinnovato per altri 30 giorni.")
 
+async def rimuovi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) != 1:
+        await update.message.reply_text("Usa: /rimuovi <username>")
+        return
+    username = context.args[0].replace("@", "")
+    remove_member(username)
+    await update.message.reply_text(f"❌ Utente @{username} rimosso dalla lista.")
+
 async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect("members.db")
     c = conn.cursor()
-    c.execute("SELECT username, join_date, expiry_date FROM members")
+    c.execute("SELECT username, expiry_date FROM members")
     rows = c.fetchall()
     conn.close()
 
@@ -103,7 +115,7 @@ async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📭 Nessun utente registrato.")
         return
 
-    text = "\n".join([f"@{u} → join: {j}, scade: {d}" for u, j, d in rows])
+    text = "\n".join([f"@{u} → scade il {d}" for u, d in rows])
     await update.message.reply_text("📋 Lista utenti:\n" + text)
 
 # === SCHEDULER ===
@@ -126,6 +138,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("registra", registra))
     app.add_handler(CommandHandler("rinnova", rinnova))
+    app.add_handler(CommandHandler("rimuovi", rimuovi))
     app.add_handler(CommandHandler("lista", lista))
 
     start_scheduler(app)
