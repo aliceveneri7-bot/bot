@@ -2,16 +2,16 @@ import sqlite3
 import logging
 from datetime import datetime, timedelta
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler, ContextTypes
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from apscheduler.schedulers.background import BackgroundScheduler
 import os
+import asyncio
 
-# TOKEN dal pannello Render (puoi usare le "Environment Variables")
+# === CONFIG ===
 TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 
-# Log per debug
+# === LOGGING ===
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
@@ -61,10 +61,9 @@ def get_expired_members():
     conn.close()
     return expired
 
-# === COMANDI BOT ===
-
+# === COMANDI ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Benvenuto! Questo bot gestisce gli accessi e i rinnovi del gruppo.")
+    await update.message.reply_text("👋 Benvenuto! Usa /registra <username> per aggiungere un utente o /rinnova <username> per rinnovare.")
 
 async def registra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
@@ -90,7 +89,7 @@ async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     if not rows:
-        await update.message.reply_text("Nessun utente registrato.")
+        await update.message.reply_text("📭 Nessun utente registrato.")
         return
 
     text = "\n".join([f"@{u} → scade il {d}" for u, d in rows])
@@ -99,14 +98,13 @@ async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # === SCHEDULER ===
 async def avvisa_scadenze(app):
     expired = get_expired_members()
-    if expired:
-        chat_id = os.getenv("ADMIN_CHAT_ID")  # metti il tuo ID Telegram qui su Render
+    if expired and ADMIN_CHAT_ID:
         text = "⚠️ Utenti con abbonamento scaduto:\n" + "\n".join([f"@{u}" for u in expired])
-        await app.bot.send_message(chat_id=chat_id, text=text)
+        await app.bot.send_message(chat_id=int(ADMIN_CHAT_ID), text=text)
 
 def start_scheduler(app):
     scheduler = BackgroundScheduler()
-    scheduler.add_job(lambda: app.create_task(avvisa_scadenze(app)), "interval", days=1)
+    scheduler.add_job(lambda: asyncio.run(avvisa_scadenze(app)), "interval", days=1)
     scheduler.start()
 
 # === MAIN ===
@@ -121,5 +119,5 @@ if __name__ == "__main__":
 
     start_scheduler(app)
 
-    print("🤖 Bot avviato con successo.")
+    print("🤖 Bot avviato correttamente su Render.")
     app.run_polling()
